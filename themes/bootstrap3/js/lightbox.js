@@ -27,7 +27,6 @@ VuFind.register('lightbox', function Lightbox() {
   }
   function _emit(msg, _details) {
     var details = _details || {};
-    // Fallback to document.createEvent() if creating a new CustomEvent fails (e.g. IE 11)
     var event;
     try {
       event = new CustomEvent(msg, {
@@ -36,6 +35,7 @@ VuFind.register('lightbox', function Lightbox() {
         cancelable: true
       });
     } catch (e) {
+      // Fallback to document.createEvent() if creating a new CustomEvent fails (e.g. IE 11)
       event = document.createEvent('CustomEvent');
       event.initCustomEvent(msg, true, true, details);
     }
@@ -55,6 +55,9 @@ VuFind.register('lightbox', function Lightbox() {
     _modalBody.find('h2:first-of-type')
       .after('<div class="flash-message alert alert-' + type + '">' + message + '</div>');
   }
+  function close() {
+    _modal.modal('hide');
+  }
 
   /**
    * Update content
@@ -63,10 +66,11 @@ VuFind.register('lightbox', function Lightbox() {
    *
    * data-lightbox-ignore = do not submit this form in lightbox
    */
-  var _constrainLink; // function declarations to avoid style warnings
-  var _formSubmit;    // about circular references
+  // function declarations to avoid style warnings about circular references
+  var _constrainLink;
+  var _formSubmit;
   function render(content) {
-    if (!content.match) {
+    if (typeof content !== "string") {
       return;
     }
     // Isolate successes
@@ -79,7 +83,7 @@ VuFind.register('lightbox', function Lightbox() {
       var href = alerts.find('.download').attr('href');
       if (typeof href !== 'undefined') {
         location.href = href;
-        _modal.modal('hide');
+        close();
       } else {
         showAlert(msgs, 'success');
       }
@@ -130,7 +134,10 @@ VuFind.register('lightbox', function Lightbox() {
       obj.url = parts[0].indexOf('?') < 0
         ? parts[0] + '?'
         : parts[0] + '&';
-      obj.url += 'layout=lightbox&lbreferer=' + encodeURIComponent(_currentUrl);
+      obj.url += 'layout=lightbox';
+      if (_currentUrl) {
+        obj.url += '&lbreferer=' + encodeURIComponent(_currentUrl);
+      }
       obj.url += parts.length < 2 ? '' : '#' + parts[1];
     }
     _xhr = $.ajax(obj);
@@ -151,11 +158,16 @@ VuFind.register('lightbox', function Lightbox() {
             }
           }
         }
-        if ( // Close the lightbox after deliberate login
-          obj.method && (                                            // is a form
-            obj.url.match(/catalogLogin/)                            // catalog login for holds
-            || obj.url.match(/MyResearch\/(?!Bulk|Delete|Recover)/)  // or that matches login/create account
-          ) && errorMsgs.length === 0                                // skip failed logins
+        // Close the lightbox after deliberate login provided that:
+        // - is a form
+        // - catalog login for holds
+        // - or that matches login/create account
+        // - not a failed login
+        if (
+          obj.method && (
+            obj.url.match(/catalogLogin/)
+            || obj.url.match(/MyResearch\/(?!Bulk|Delete|Recover)/)
+          ) && errorMsgs.length === 0
         ) {
 
           var eventResult = _emit('VuFind.lightbox.login', {
@@ -224,7 +236,7 @@ VuFind.register('lightbox', function Lightbox() {
     if (typeof $(this).data('lightboxIgnore') != 'undefined'
       || typeof this.attributes.href === 'undefined'
       || this.attributes.href.value.charAt(0) === '#'
-      || this.href.match(/^[a-zA-Z]+\:[^\/]/) // ignore resource identifiers (mailto:, tel:, etc.)
+      || this.href.match(/^[a-zA-Z]+:[^/]/) // ignore resource identifiers (mailto:, tel:, etc.)
     ) {
       return true;
     }
@@ -275,6 +287,10 @@ VuFind.register('lightbox', function Lightbox() {
     _clickedButton = null;
     var buttonData = { name: 'submit', value: 1 };
     if (submit.length > 0) {
+      if (typeof submit.data('lightbox-close') !== 'undefined') {
+        close();
+        return false;
+      }
       if (typeof submit.data('lightbox-ignore') !== 'undefined') {
         return true;
       }
@@ -337,6 +353,29 @@ VuFind.register('lightbox', function Lightbox() {
       $(form).find('[type=submit]').click(_storeClickedStatus);
       $('[type="submit"][form="' + form.id + '"]').click(_storeClickedStatus);
     });
+
+    // Display images in the lightbox
+    $('[data-lightbox-image]', el).each(function lightboxOpenImage(i, link) {
+      $(link).unbind("click", _constrainLink);
+      $(link).bind("click", function lightboxImageRender(event) {
+        event.preventDefault();
+        var url = link.dataset.lightboxHref || link.href || link.src;
+        var imageCheck = $.ajax({
+          url: url,
+          method: "HEAD"
+        });
+        imageCheck.done(function lightboxImageCheckDone(content, status, jq_xhr) {
+          if (
+            jq_xhr.status === 200 && 
+            jq_xhr.getResponseHeader("content-type").substr(0, 5) === "image"
+          ) {
+            render('<div class="lightbox-image"><img src="' + url + '"/></div>');
+          } else {
+            location.href = url;
+          }
+        });
+      });
+    });
   }
 
   function reset() {
@@ -380,6 +419,7 @@ VuFind.register('lightbox', function Lightbox() {
     ajax: ajax,
     alert: showAlert,
     bind: bind,
+    close: close,
     flashMessage: flashMessage,
     reload: reload,
     render: render,

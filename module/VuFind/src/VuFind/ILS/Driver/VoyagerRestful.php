@@ -362,7 +362,7 @@ class VoyagerRestful extends Voyager implements \VuFindHttp\HttpServiceAwareInte
             $valid_hold_statuses_array
                 = explode(':', $this->config['Holds']['valid_hold_statuses']);
 
-            if (count($valid_hold_statuses_array > 0)) {
+            if (!empty($valid_hold_statuses_array)) {
                 foreach ($statusArray as $status) {
                     if (!in_array($status, $valid_hold_statuses_array)) {
                         $is_holdable = false;
@@ -2658,7 +2658,7 @@ EOT;
             return $data;
         }
 
-        if (strstr($patron['id'], '.') === false) {
+        if (strpos($patron['id'], '.') === false) {
             $this->debug(
                 "getUBRequestDetails: no prefix in patron id '{$patron['id']}'"
             );

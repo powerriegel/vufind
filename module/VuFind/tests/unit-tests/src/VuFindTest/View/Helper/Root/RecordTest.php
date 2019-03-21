@@ -164,7 +164,7 @@ class RecordTest extends \PHPUnit\Framework\TestCase
      */
     public function testGetListEntry()
     {
-        $driver = $this->createMock('VuFind\RecordDriver\AbstractBase');
+        $driver = $this->createMock(\VuFind\RecordDriver\AbstractBase::class);
         $driver->expects($this->once())->method('getContainingLists')
             ->with($this->equalTo(42))
             ->will($this->returnValue([1, 2, 3]));
@@ -256,8 +256,11 @@ class RecordTest extends \PHPUnit\Framework\TestCase
     public function testGetLink()
     {
         $context = $this->getMockContext();
+        $callback = function ($arr) {
+            return $arr['lookfor'] === 'foo';
+        };
         $context->expects($this->once())->method('apply')
-            ->with($this->equalTo(['lookfor' => 'foo']))
+            ->with($this->callback($callback))
             ->will($this->returnValue(['bar' => 'baz']));
         $context->expects($this->once())->method('restore')
             ->with($this->equalTo(['bar' => 'baz']));
@@ -496,7 +499,7 @@ class RecordTest extends \PHPUnit\Framework\TestCase
         if (null === $context) {
             $context = $this->getMockContext();
         }
-        $view = $this->getMockBuilder('Zend\View\Renderer\PhpRenderer')
+        $view = $this->getMockBuilder(\Zend\View\Renderer\PhpRenderer::class)
             ->disableOriginalConstructor()
             ->setMethods(['render', 'plugin', 'resolver'])
             ->getMock();
@@ -533,7 +536,7 @@ class RecordTest extends \PHPUnit\Framework\TestCase
      */
     protected function getMockResolver()
     {
-        return $this->createMock('Zend\View\Resolver\ResolverInterface');
+        return $this->createMock(\Zend\View\Resolver\ResolverInterface::class);
     }
 
     /**
@@ -543,7 +546,7 @@ class RecordTest extends \PHPUnit\Framework\TestCase
      */
     protected function getMockContext()
     {
-        $context = $this->createMock('VuFind\View\Helper\Root\Context');
+        $context = $this->createMock(\VuFind\View\Helper\Root\Context::class);
         $context->expects($this->any())->method('__invoke')
             ->will($this->returnValue($context));
         return $context;
@@ -558,7 +561,7 @@ class RecordTest extends \PHPUnit\Framework\TestCase
      */
     protected function getMockUrl($expectedRoute)
     {
-        $url = $this->createMock('Zend\View\Helper\Url');
+        $url = $this->createMock(\Zend\View\Helper\Url::class);
         $url->expects($this->once())->method('__invoke')
             ->with($this->equalTo($expectedRoute))
             ->will($this->returnValue('http://foo/bar'));
@@ -574,7 +577,7 @@ class RecordTest extends \PHPUnit\Framework\TestCase
      */
     protected function getMockServerUrl()
     {
-        $url = $this->createMock('Zend\View\Helper\ServerUrl');
+        $url = $this->createMock(\Zend\View\Helper\ServerUrl::class);
         $url->expects($this->once())->method('__invoke')
             ->will($this->returnValue('http://server-foo/baz'));
         return $url;
@@ -587,7 +590,7 @@ class RecordTest extends \PHPUnit\Framework\TestCase
      */
     protected function getMockSearchTabs()
     {
-        $searchTabs = $this->getMockBuilder('VuFind\View\Helper\Root\SearchTabs')
+        $searchTabs = $this->getMockBuilder(\VuFind\View\Helper\Root\SearchTabs::class)
             ->disableOriginalConstructor()->getMock();
         $searchTabs->expects($this->any())->method('getCurrentHiddenFilterParams')
             ->will($this->returnValue(''));

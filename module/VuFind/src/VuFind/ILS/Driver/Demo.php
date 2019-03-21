@@ -69,9 +69,9 @@ class Demo extends AbstractBase
     /**
      * Container for storing persistent simulated ILS data.
      *
-     * @var SessionContainer
+     * @var SessionContainer[]
      */
-    protected $session = null;
+    protected $session = [];
 
     /**
      * Factory function for constructing the SessionContainer.
@@ -274,6 +274,17 @@ class Demo extends AbstractBase
      */
     protected function getRandomBibId()
     {
+        list($id) = $this->getRandomBibIdAndTitle();
+        return $id;
+    }
+
+    /**
+     * Get a random ID and title from the Solr index.
+     *
+     * @return array [id, title]
+     */
+    protected function getRandomBibIdAndTitle()
+    {
         $source = $this->getRecordSource();
         $query = isset($this->config['Records']['query'])
             ? $this->config['Records']['query'] : '*:*';
@@ -281,7 +292,8 @@ class Demo extends AbstractBase
         if (count($result) === 0) {
             throw new \Exception('Problem retrieving random record from $source.');
         }
-        return current($result->getRecords())->getUniqueId();
+        $record = current($result->getRecords());
+        return [$record->getUniqueId(), $record->getTitle()];
     }
 
     /**
@@ -450,7 +462,8 @@ class Demo extends AbstractBase
                 $currentItem['institution_dbkey'] = 'ill_institution';
             } else {
                 if ($this->idsInMyResearch) {
-                    $currentItem['id'] = $this->getRandomBibId();
+                    list($currentItem['id'], $currentItem['title'])
+                        = $this->getRandomBibIdAndtitle();
                     $currentItem['source'] = $this->getRecordSource();
                 } else {
                     $currentItem['title'] = 'Demo Title ' . $i;
@@ -463,6 +476,11 @@ class Demo extends AbstractBase
                     $currentItem['position'] = $pos;
                 } else {
                     $currentItem['available'] = true;
+                    if (rand() % 3 != 1) {
+                        $lastDate = strtotime('now + 3 days');
+                        $currentItem['last_pickup_date'] = $this->dateConverter
+                            ->convertToDisplayDate('U', $lastDate);
+                    }
                 }
                 $pos = rand(0, count($requestGroups) - 1);
                 $currentItem['requestGroup'] = $requestGroups[$pos]['name'];
@@ -510,16 +528,25 @@ class Demo extends AbstractBase
     /**
      * Get the session container (constructing it on demand if not already present)
      *
+     * @param string $patron ID of current patron
+     *
      * @return SessionContainer
      */
-    protected function getSession()
+    protected function getSession($patron = null)
     {
+        // We have a separate session for each user ID; if none is specified,
+        // try to pick the first one arbitrarily; the difference only matters
+        // when testing multiple accounts.
+        $selectedPatron = empty($patron)
+            ? (current(array_keys($this->session)) ?: 'default')
+            : $patron;
+
         // SessionContainer not defined yet? Build it now:
-        if (null === $this->session) {
+        if (!isset($this->session[$selectedPatron])) {
             $factory = $this->sessionFactory;
-            $this->session = $factory();
+            $this->session[$selectedPatron] = $factory($selectedPatron);
         }
-        return $this->session;
+        return $this->session[$selectedPatron];
     }
 
     /**
@@ -539,7 +566,7 @@ class Demo extends AbstractBase
         $id = (string)$id;
 
         // Do we have a fake status persisted in the session?
-        $session = $this->getSession();
+        $session = $this->getSession($patron['id'] ?? null);
         if (isset($session->statuses[$id])) {
             return $session->statuses[$id];
         }
@@ -633,7 +660,8 @@ class Demo extends AbstractBase
             $status[$i]['holdings_notes'] = [];
             $status[$i]['item_notes'] = [];
             for ($j = 1; $j <= $noteCount; $j++) {
-                $status[$i]['holdings_notes'][] = "Item $itemNum holdings note $j";
+                $status[$i]['holdings_notes'][] = "Item $itemNum holdings note $j"
+                    . ($j === 1 ? ' https://vufind.org/?f=1&b=2#sample_link' : '');
                 $status[$i]['item_notes'][] = "Item $itemNum note $j";
             }
             $summCount = rand(1, 3);
@@ -750,7 +778,7 @@ class Demo extends AbstractBase
     public function getMyFines($patron)
     {
         $this->checkIntermittentFailure();
-        $session = $this->getSession();
+        $session = $this->getSession($patron['id'] ?? null);
         if (!isset($session->fines)) {
             // How many items are there? %20 - 2 = 10% chance of none,
             // 90% of 1-18 (give or take some odd maths)
@@ -767,9 +795,10 @@ class Demo extends AbstractBase
 
                 $fineList[] = [
                     "amount"   => $fine * 100,
-                    "checkout" => $this->dateConverter->convertToDisplayDate(
-                        'U', $checkout
-                    ),
+                    "checkout" => $this->dateConverter
+                        ->convertToDisplayDate('U', $checkout),
+                    'createdate' => $this->dateConverter
+                        ->convertToDisplayDate('U', time()),
                     // After 20 days it becomes 'Long Overdue'
                     "fine"     => $day_overdue > 20 ? "Long Overdue" : "Overdue",
                     // 50% chance they've paid half of it
@@ -781,7 +810,8 @@ class Demo extends AbstractBase
                 // Some fines will have no id or title:
                 if (rand() % 3 != 1) {
                     if ($this->idsInMyResearch) {
-                        $fineList[$i]['id'] = $this->getRandomBibId();
+                        list($fineList[$i]['id'], $fineList[$i]['title'])
+                            = $this->getRandomBibIdAndTitle();
                         $fineList[$i]['source'] = $this->getRecordSource();
                     } else {
                         $fineList[$i]['title'] = 'Demo Title ' . $i;
@@ -807,7 +837,7 @@ class Demo extends AbstractBase
     public function getMyHolds($patron)
     {
         $this->checkIntermittentFailure();
-        $session = $this->getSession();
+        $session = $this->getSession($patron['id'] ?? null);
         if (!isset($session->holds)) {
             $session->holds = $this->createRequestList('Holds');
         }
@@ -828,7 +858,7 @@ class Demo extends AbstractBase
     public function getMyStorageRetrievalRequests($patron)
     {
         $this->checkIntermittentFailure();
-        $session = $this->getSession();
+        $session = $this->getSession($patron['id'] ?? null);
         if (!isset($session->storageRetrievalRequests)) {
             $session->storageRetrievalRequests
                 = $this->createRequestList('StorageRetrievalRequests');
@@ -850,7 +880,7 @@ class Demo extends AbstractBase
     public function getMyILLRequests($patron)
     {
         $this->checkIntermittentFailure();
-        $session = $this->getSession();
+        $session = $this->getSession($patron['id'] ?? null);
         if (!isset($session->ILLRequests)) {
             $session->ILLRequests = $this->createRequestList('ILLRequests');
         }
@@ -874,6 +904,24 @@ class Demo extends AbstractBase
     }
 
     /**
+     * Calculate the due status for a due date.
+     *
+     * @param int $due Due date as Unix timestamp
+     *
+     * @return string
+     */
+    protected function calculateDueStatus($due)
+    {
+        $dueRelative = $due - time();
+        if ($dueRelative < 0) {
+            return 'overdue';
+        } elseif ($dueRelative < 24 * 60 * 60) {
+            return 'due';
+        }
+        return false;
+    }
+
+    /**
      * Construct a random set of transactions for getMyTransactions().
      *
      * @return array
@@ -889,16 +937,9 @@ class Demo extends AbstractBase
             // When is it due? +/- up to 15 days
             $due_relative = rand() % 30 - 15;
             // Due date
-            $dueStatus = false;
-            if ($due_relative >= 0) {
-                $rawDueDate = strtotime("now +$due_relative days");
-                if ($due_relative == 0) {
-                    $dueStatus = 'due';
-                }
-            } else {
-                $rawDueDate = strtotime("now $due_relative days");
-                $dueStatus = 'overdue';
-            }
+            $rawDueDate = strtotime(
+                'now ' . ($due_relative >= 0 ? '+' : '') . $due_relative . ' days'
+            );
 
             // Times renewed    : 0,0,0,0,0,1,2,3,4,5
             $renew = rand() % 10 - 5;
@@ -924,7 +965,7 @@ class Demo extends AbstractBase
                     'U', $rawDueDate
                 ),
                 'rawduedate' => $rawDueDate,
-                'dueStatus' => $dueStatus,
+                'dueStatus' => $this->calculateDueStatus($rawDueDate),
                 'barcode' => sprintf("%08d", rand() % 50000),
                 'renew'   => $renew,
                 'renewLimit' => $renewLimit,
@@ -945,7 +986,8 @@ class Demo extends AbstractBase
             } else {
                 $transList[$i]['borrowingLocation'] = $this->getFakeLoc();
                 if ($this->idsInMyResearch) {
-                    $transList[$i]['id'] = $this->getRandomBibId();
+                    list($transList[$i]['id'], $transList[$i]['title'])
+                        = $this->getRandomBibIdAndTitle();
                     $transList[$i]['source'] = $this->getRecordSource();
                 } else {
                     $transList[$i]['title'] = 'Demo Title ' . $i;
@@ -962,19 +1004,51 @@ class Demo extends AbstractBase
      * by a specific patron.
      *
      * @param array $patron The patron array from patronLogin
+     * @param array $params Parameters
      *
      * @return mixed        Array of the patron's transactions on success.
      *
      * @SuppressWarnings(PHPMD.UnusedFormalParameter)
      */
-    public function getMyTransactions($patron)
+    public function getMyTransactions($patron, $params = [])
     {
         $this->checkIntermittentFailure();
-        $session = $this->getSession();
+        $session = $this->getSession($patron['id'] ?? null);
         if (!isset($session->transactions)) {
             $session->transactions = $this->getTransactionList();
         }
-        return $session->transactions;
+        // Order
+        $transactions = $session->transactions;
+        if (!empty($params['sort'])) {
+            $sort = explode(
+                ' ', !empty($params['sort']) ? $params['sort'] : 'date_due desc', 2
+            );
+
+            $descending = isset($sort[1]) && 'desc' === $sort[1];
+
+            usort(
+                $transactions,
+                function ($a, $b) use ($sort, $descending) {
+                    if ('title' === $sort[0]) {
+                        $cmp = strcmp($a['title'] ?? '', $b['title'] ?? '');
+                    } else {
+                        $cmp = $a['rawduedate'] - $b['rawduedate'];
+                    }
+                    return $descending ? -$cmp : $cmp;
+                }
+            );
+        }
+
+        if (isset($params['limit'])) {
+            $limit = $params['limit'] ?? 50;
+            $offset = isset($params['page']) ? ($params['page'] - 1) * $limit : 0;
+            $transactions = array_slice($transactions, $offset, $limit);
+        }
+
+        return [
+            'count' => count($session->transactions),
+            'records' => $transactions
+        ];
     }
 
     /**
@@ -1035,7 +1109,8 @@ class Demo extends AbstractBase
                 'item_id' => $i,
             ];
             if ($this->idsInMyResearch) {
-                $transList[$i]['id'] = $this->getRandomBibId();
+                list($transList[$i]['id'], $transList[$i]['title'])
+                    = $this->getRandomBibIdAndTitle();
                 $transList[$i]['source'] = $this->getRecordSource();
             } else {
                 $transList[$i]['title'] = 'Demo Title ' . $i;
@@ -1060,7 +1135,7 @@ class Demo extends AbstractBase
     public function getMyTransactionHistory($patron, $params)
     {
         $this->checkIntermittentFailure();
-        $session = $this->getSession();
+        $session = $this->getSession($patron['id'] ?? null);
         if (!isset($session->historicLoans)) {
             $session->historicLoans = $this->getHistoricTransactionList();
         }
@@ -1400,7 +1475,7 @@ class Demo extends AbstractBase
         // cancel.
         $newHolds = new ArrayObject();
         $retVal = ['count' => 0, 'items' => []];
-        $session = $this->getSession();
+        $session = $this->getSession($cancelDetails['patron']['id'] ?? null);
         foreach ($session->holds as $current) {
             if (!in_array($current['reqnum'], $cancelDetails['details'])) {
                 $newHolds->append($current);
@@ -1464,7 +1539,7 @@ class Demo extends AbstractBase
         // cancel.
         $newRequests = new ArrayObject();
         $retVal = ['count' => 0, 'items' => []];
-        $session = $this->getSession();
+        $session = $this->getSession($cancelDetails['patron']['id'] ?? null);
         foreach ($session->storageRetrievalRequests as $current) {
             if (!in_array($current['reqnum'], $cancelDetails['details'])) {
                 $newRequests->append($current);
@@ -1537,13 +1612,15 @@ class Demo extends AbstractBase
         $finalResult = ['blocks' => false, 'details' => []];
 
         // Grab transactions from session so we can modify them:
-        $session = $this->getSession();
+        $session = $this->getSession($renewDetails['patron']['id'] ?? null);
         $transactions = $session->transactions;
         foreach ($transactions as $i => $current) {
             // Only renew requested items:
             if (in_array($current['item_id'], $renewDetails['details'])) {
                 if (!$this->isFailing(__METHOD__, 50)) {
-                    $transactions[$i]['rawduedate'] += 7 * 24 * 60 * 60;
+                    $transactions[$i]['rawduedate'] += 21 * 24 * 60 * 60;
+                    $transactions[$i]['dueStatus']
+                        = $this->calculateDueStatus($transactions[$i]['rawduedate']);
                     $transactions[$i]['duedate']
                         = $this->dateConverter->convertToDisplayDate(
                             'U', $transactions[$i]['rawduedate']
@@ -1651,7 +1728,7 @@ class Demo extends AbstractBase
             ];
         }
 
-        $session = $this->getSession();
+        $session = $this->getSession($holdDetails['patron']['id'] ?? null);
         if (!isset($session->holds)) {
             $session->holds = new ArrayObject();
         }
@@ -1773,7 +1850,7 @@ class Demo extends AbstractBase
             ];
         }
 
-        $session = $this->getSession();
+        $session = $this->getSession($details['patron']['id'] ?? null);
         if (!isset($session->storageRetrievalRequests)) {
             $session->storageRetrievalRequests = new ArrayObject();
         }
@@ -1887,7 +1964,7 @@ class Demo extends AbstractBase
             ];
         }
 
-        $session = $this->getSession();
+        $session = $this->getSession($details['patron']['id'] ?? null);
         if (!isset($session->ILLRequests)) {
             $session->ILLRequests = new ArrayObject();
         }
@@ -2063,7 +2140,7 @@ class Demo extends AbstractBase
         // cancel.
         $newRequests = new ArrayObject();
         $retVal = ['count' => 0, 'items' => []];
-        $session = $this->getSession();
+        $session = $this->getSession($cancelDetails['patron']['id'] ?? null);
         foreach ($session->ILLRequests as $current) {
             if (!in_array($current['reqnum'], $cancelDetails['details'])) {
                 $newRequests->append($current);
@@ -2184,8 +2261,7 @@ class Demo extends AbstractBase
             if (empty($this->config['TransactionHistory']['enabled'])) {
                 return false;
             }
-            return [
-                'max_results' => 100,
+            $config = [
                 'sort' => [
                     'checkout desc' => 'sort_checkout_date_desc',
                     'checkout asc' => 'sort_checkout_date_asc',
@@ -2196,7 +2272,27 @@ class Demo extends AbstractBase
                 ],
                 'default_sort' => 'checkout desc'
             ];
+            if ($this->config['Loans']['paging'] ?? false) {
+                $config['max_results']
+                    = $this->config['Loans']['max_page_size'] ?? 100;
+            }
+            return $config;
         }
+        if ('getMyTransactions' === $function) {
+            if (empty($this->config['Loans']['paging'])) {
+                return [];
+            }
+            return [
+                'max_results' => $this->config['Loans']['max_page_size'] ?? 100,
+                'sort' => [
+                    'due desc' => 'sort_due_date_desc',
+                    'due asc' => 'sort_due_date_asc',
+                    'title asc' => 'sort_title'
+                ],
+                'default_sort' => 'due asc'
+            ];
+        }
+
         return [];
     }
 

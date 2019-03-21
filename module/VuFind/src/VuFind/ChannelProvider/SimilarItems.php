@@ -30,7 +30,6 @@ namespace VuFind\ChannelProvider;
 use VuFind\I18n\Translator\TranslatorAwareInterface;
 use VuFind\Record\Router as RecordRouter;
 use VuFind\RecordDriver\AbstractBase as RecordDriver;
-use VuFind\Search\Base\Params;
 use VuFind\Search\Base\Results;
 use Zend\Mvc\Controller\Plugin\Url;
 
@@ -162,7 +161,10 @@ class SimilarItems extends AbstractChannelProvider
         }
         // If the search results did not include the object we were looking for,
         // we need to fetch it from the search service:
-        if (empty($channels) && is_object($driver) && $channelToken !== null) {
+        if (empty($channels)
+            && is_object($driver ?? null)
+            && $channelToken !== null
+        ) {
             $driver = $this->searchService->retrieve(
                 $driver->getSourceIdentifier(), $channelToken
             )->first();
