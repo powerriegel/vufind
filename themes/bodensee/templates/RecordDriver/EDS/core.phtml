@@ -1,0 +1,152 @@
+<?
+    $this->headLink()->appendStylesheet('EDS.css');
+
+    $items = $this->driver->getItems();
+    $dbLabel = $this->driver->getDbLabel();
+    $thumb = $this->driver->getThumbnail('medium');
+    $pubType = $this->driver->getPubType();
+    $customLinks = $this->driver->getCustomLinks();
+    $accessLevel = $this->driver->getAccessLevel();
+    $restrictedView = empty($accessLevel) ? false : true;
+    
+?>
+<div class="row" vocab="http://schema.org/" resource="#record" typeof="<?=$this->driver->getSchemaOrgFormats()?> Product">
+  <div class="col-xs-12 col-sm-3 pull-right">
+    <? if ($thumb): ?>
+        <img src="<?=$this->escapeHtmlAttr($thumb)?>" class="recordcover" alt="<?=$this->transEsc('Cover Image')?>"/>
+    <? else: ?>
+        <span class="recordcover pt-icon pt-<?=$this->driver->getPubTypeId()?>"></span>
+    <? endif; ?>
+    <? if ($pubType): ?>
+      <p class="text-center"><?=$this->transEsc($pubType)?></p>
+    <? endif; ?>
+
+    <div class="external-links">
+      <? $pLink = $this->driver->getPLink();
+          if($pLink): ?>
+      <? endif; ?>
+      
+          <? if ($this->driver->hasPDFAvailable()):
+          $pdfLink = $this->driver->getPdfLink(); ?>
+          <? if (strlen($pdfLink) > 0): ?>
+        <div class="text-center">
+          <a href="<?=$pdfLink?>" class="external fulltext hasicon">
+              <i class="fa fa-file-pdf-o"></i><?=$this->transEsc('PDF Full Text')?>
+          </a>
+        </div><br />
+        <? endif; ?>
+      <? endif; ?>
+     </div>
+  </div>
+  <div class="col-sm-9">
+    <h3 property="name"><?=$this->driver->getTitle()?></h3>
+        <? if ($this->userlist()->getMode() !== 'disabled'): ?>
+      <? /* Display the lists that this record is saved to */ ?>
+      <div class="savedLists hidden alert alert-info" id="savedLists">
+        <strong><?=$this->transEsc("Saved in")?>:</strong>
+      </div>
+    <? endif; ?>
+
+    <table class="table table-striped" summary="<?=$this->transEsc('Bibliographic Details')?>">
+
+      <? $hiddenItems = ['PublrInfo'] ?> 
+      <? foreach ($items as $key => $item): ?>
+        <? if (!empty($item['Data'])  && !in_array($item['Group'], $hiddenItems)): ?>
+          <th><?=$this->transEsc($item['Label'])?>:</th>          
+            <? if($item['Label'] !== 'DOI' && $item['Label'] !== 'Access URL'): ?>
+              <td><?=$this->driver->linkUrls($item['Data'], $item['Label'])?></td>
+            <? else: ?>
+            <? $link = $this->string()->cleanEbscoLinks($item['Data'])?>
+              <td><a href="<?=$link?>" class="external"><?=$link?></a></td>
+            <? endif; ?>
+        <tr>
+        </tr>
+        <? endif; ?>
+      <? endforeach; ?>
+      <? if ($pubType): ?>
+        <tr>
+          <th><?=$this->transEsc('Format')?>:</th>
+          <td><?=$this->transEsc($pubType)?></td>
+            
+        </tr>
+      <? endif; ?>
+
+      <? if ($dbLabel): ?>
+        <tr>
+          <th><?=$this->transEsc('Database')?>:</th>
+          <td><?=$this->escapeHtml($dbLabel)?></td>
+        </tr>
+      <? endif; ?>
+
+      <?if ($this->driver->hasHTMLFullTextAvailable() && !$restrictedView):
+          $fullText = $this->driver->getHtmlFullText();?>
+        <tr id="html">
+          <td colspan="2">
+            <?=$this->string()->cleanEbscoHtml($fullText)?>
+          </td>
+        </tr>
+      <? elseif ($this->driver->hasHTMLFullTextAvailable() && $restrictedView): ?>
+        <tr id="html">
+          <td>
+            <?=$this->transEsc('Full text is not displayed to guests')?>
+          </td>
+          <td>
+            <a class="external login" href="<?=$this->url('myresearch-userlogin')?>">
+              <strong><?=$this->transEsc('Login for full access')?></strong>
+            </a>
+          </td>
+        </tr>
+        <? endif; ?>        
+    <? $customFTLinks = $this->driver->getFTCustomLinks(); ?>
+    <? if (!empty($customFTLinks) && !$this->driver->hasHTMLFullTextAvailable() && !$this->driver->hasPdfAvailable() ): ?>
+      <? foreach ($customFTLinks as $customLink): ?>        <? $url = isset($customLink['Url']) ? $customLink['Url'] : '';
+          $mot = isset($customLink['MouseOverText'])? $customLink['MouseOverText'] : '';
+          $icon = isset ($customLink['Icon']) ? $customLink['Icon'] : '';
+          $name = isset($customLink['Text']) ? $customLink['Text'] : '';
+        ?>
+        <tr>
+          <td>
+            <a href="<?=$this->escapeHtmlAttr(str_replace('http://dx.doi.org', 'https://doi.org', $url))?>" target="_blank" title="<?=$mot?>" class="custom-link">
+              <? if ($icon): ?><img src="<?=$icon?>" /> <? endif; ?><?=$name?>
+            </a>              
+          </td>
+        </tr>
+        <? if ($this->client()->is('only_first_customlink')): ?>
+            <? break; ?>
+        <? endif; ?>      
+      <? endforeach; ?>
+    <? endif; ?>
+
+    <? $customLinks = $this->driver->getCustomLinks(); ?>
+    <? if ( !empty($customLinks) && $this->client()->is('show_other_customlinks') && empty($customFTLinks) && empty($this->driver->getDoi()) && !$this->driver->hasHTMLFullTextAvailable() && !$this->driver->hasPdfAvailable() ): ?>
+      <? foreach ($customLinks as $customLink): ?>
+        <? $url = isset($customLink['Url']) ? $customLink['Url'] : '';
+          $mot = isset($customLink['MouseOverText'])? $customLink['MouseOverText'] : '';
+          $icon = isset ($customLink['Icon']) ? $customLink['Icon'] : '';
+          $name = isset($customLink['Text']) ? $customLink['Text'] : '';
+        ?>
+        <tr>
+          <td>
+            <a href="<?=$this->escapeHtmlAttr(str_replace('http://www.redi-bw.de', 'https://www.redi-bw.de', $url))?>" target="_blank" title="<?=$mot?>" class="custom-link external hasicon">
+              <? if ($icon): ?><img src="<?=str_replace('http://www.redi-bw.de', 'https://www.redi-bw.de', $icon)?>" /> <? endif; ?><?=$name?>
+            </a>              
+          </td>
+        </tr>
+        <? if ($this->client()->is('only_first_customlink')): ?>
+            <? break; ?>
+        <? endif; ?>        
+      <? endforeach; ?>
+    <? endif; ?>   
+    <? if (!empty($this->driver->getDoi()) && !$this->client()->is('doi_in_customlink') && !$this->driver->hasHTMLFullTextAvailable() && !$this->driver->hasPdfAvailable()): ?>
+        <tr>
+            <th>DOI:</th>
+            <td><a class="external" href="https://doi.org/<?= $this->driver->getDoi(); ?>" target="_blank">https://doi.org/<?= $this->driver->getDoi(); ?></a></td>
+        </tr>
+      </div>
+      <? endif; ?>
+    </table>    
+    <?=$this->driver->supportsCoinsOpenUrl()?'<span class="Z3988" title="'.$this->escapeHtmlAttr($this->driver->getCoinsOpenUrl()).'"></span>':''?>
+  </div>
+</div>
+<div class="nofloat"></div>
+
